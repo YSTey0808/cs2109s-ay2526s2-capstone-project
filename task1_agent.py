@@ -68,8 +68,7 @@ class Agent:
             if s.turn > info['turn_limit']:
                 continue
                 
-            key = s
-            replace(key, coins = frozenset())
+            key = replace(s, coins=frozenset())
             state_key = (key, agent)
             if state_key in visited:
                 continue
@@ -117,6 +116,14 @@ class Agent:
         if agent.has_boot:
             base = base / 2
 
+        # Time pressure: when remaining turns are tight, heavily penalize
+        # being far from goal to discourage any non-essential detours (coins)
+        remaining = info['turn_limit'] - s.turn
+        if remaining > 0:
+            slack = remaining - base
+            if slack < 5:
+                base += max(0, 5 - slack) * 3
+
         return max(0, base)
 
 
@@ -156,8 +163,11 @@ class Agent:
         successors = []
         #Update agent status for powerup turns
         new_agent = agent
+
+
         s = replace(s, turn=s.turn + 1)
         
+        # Update powerup turns and expire if needed
         if agent.has_ghost and agent.ghost_turns > 0:
             new_agent = replace(new_agent, ghost_turns=agent.ghost_turns - 1)
             if new_agent.ghost_turns == 0:
@@ -166,7 +176,9 @@ class Agent:
             new_agent = replace(new_agent, boot_turns=agent.boot_turns - 1)
             if new_agent.boot_turns == 0:
                 new_agent = replace(new_agent, has_boot=False)  
-            
+        
+
+
         # Pick up gem
         if s.pos in s.gems:
             successors.append((3, replace(s, gems=s.gems - {s.pos}), new_agent, Action.PICK_UP))
@@ -178,6 +190,7 @@ class Agent:
         if s.pos in s.keys_on_floor:
             new_s = replace(s, keys=s.keys + 1, keys_on_floor=s.keys_on_floor - {s.pos})
             successors.append((3, new_s, new_agent, Action.PICK_UP))
+        
 
         # Use key on adjacent locked door
         if s.keys > 0:
@@ -193,7 +206,7 @@ class Agent:
             successors.append((3, new_state, pickup_agent, Action.PICK_UP))
 
         if s.pos in s.shields:
-            pickup_agent = replace(new_agent, has_shield=True, shield_uses =5)
+            pickup_agent = replace(new_agent, has_shield=True, shield_uses = new_agent.shield_uses + 5)
             new_state = replace(s, shields=s.shields - {s.pos})
             successors.append((3, new_state , pickup_agent, Action.PICK_UP))
 
@@ -225,6 +238,7 @@ class Agent:
                     move_agent = self._apply_lava_damage(move_agent)
                     if move_agent is None:
                         continue
+                    
                 if mid in s.boxes:
                     pushed_to = far
                     if (0 <= far[0] < state.width and 0 <= far[1] < state.height
@@ -232,6 +246,7 @@ class Agent:
                         new_boxes = s.boxes - {mid} | {far}
                         successors.append((3, replace(s, pos=mid, boxes=new_boxes), move_agent, action))
                     continue
+
                 # Substep 2: check if far is reachable
                 far_ok = (0 <= far[0] < state.width and 0 <= far[1] < state.height
                           and (move_agent.has_ghost or (far not in info['walls'] and far not in s.doors)))
